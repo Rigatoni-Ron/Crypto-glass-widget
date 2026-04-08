@@ -786,11 +786,35 @@
           return path + ` L${last[1]},148 L${m[1]},148 Z`;
         }, [path]);
 
-        // Last point for the pulsing live indicator
-        const lastPoint = useMemo(() => {
-          const m = path.match(/([\d.\-]+),([\d.\-]+)\s*$/);
-          return m ? { x: parseFloat(m[1]), y: parseFloat(m[2]) } : null;
-        }, [path]);
+        // Track the actual rendered path's end point each frame so the live dot
+        // stays glued to the line as it morphs (line and dot can't share a single
+        // interpolator across path commands, so we read geometry instead).
+        const lineRef = useRef(null);
+        const dotRef = useRef(null);
+        const haloRef = useRef(null);
+        useEffect(() => {
+          let raf;
+          const tick = () => {
+            const el = lineRef.current;
+            if (el && el.getTotalLength) {
+              const len = el.getTotalLength();
+              if (len > 0) {
+                const pt = el.getPointAtLength(len);
+                if (dotRef.current) {
+                  dotRef.current.setAttribute("cx", pt.x);
+                  dotRef.current.setAttribute("cy", pt.y);
+                }
+                if (haloRef.current) {
+                  haloRef.current.setAttribute("cx", pt.x);
+                  haloRef.current.setAttribute("cy", pt.y);
+                }
+              }
+            }
+            raf = requestAnimationFrame(tick);
+          };
+          raf = requestAnimationFrame(tick);
+          return () => cancelAnimationFrame(raf);
+        }, []);
 
         return h(
           "div",
@@ -815,23 +839,14 @@
               transition: lineTrans,
             }),
             h(motion.path, {
+              ref: lineRef,
               className: "pulse-line",
               initial: { d: path },
               animate: { d: path },
               transition: lineTrans,
             }),
-            lastPoint && h(motion.circle, {
-              className: "live-dot-halo",
-              animate: { cx: lastPoint.x, cy: lastPoint.y },
-              transition: lineTrans,
-              r: 4,
-            }),
-            lastPoint && h(motion.circle, {
-              className: "live-dot",
-              animate: { cx: lastPoint.x, cy: lastPoint.y },
-              transition: lineTrans,
-              r: 1.8,
-            })
+            h("circle", { ref: haloRef, className: "live-dot-halo", r: 4 }),
+            h("circle", { ref: dotRef, className: "live-dot", r: 1.8 })
           )
         );
       }
