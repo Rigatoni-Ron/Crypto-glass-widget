@@ -463,6 +463,15 @@
         outline: none;
         cursor: text;
       }
+      .buy-info-slot {
+        height: 20px;
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .buy-balance.over { color: var(--down); }
+      .buy-balance.over strong { color: var(--down); }
       .buy-balance {
         font-family: var(--mono);
         font-size: 10px;
@@ -974,7 +983,10 @@
         const inputRef = useRef(null);
         const display = amount === "" ? "0" : amount;
         const fontSize = fontSizeForLength(display.length + 4); // + "BTC"
-        const usdValue = (parseFloat(amount || "0") * (price || 0));
+        const btcAmount = parseFloat(amount || "0");
+        const usdValue = btcAmount * (price || 0);
+        const isEmpty = btcAmount <= 0;
+        const overBalance = usdValue > balance;
 
         useEffect(() => {
           if (inputRef.current) inputRef.current.focus();
@@ -992,7 +1004,7 @@
 
         return h(
           "div",
-          { className: "buy-panel" },
+          { className: "buy-panel", onClick: () => inputRef.current && inputRef.current.focus() },
           h(
             "div",
             {
@@ -1012,25 +1024,55 @@
               className: "buy-input-hidden",
               value: amount,
               onChange: handleChange,
+              onBlur: () => setTimeout(() => inputRef.current && inputRef.current.focus(), 0),
               inputMode: "decimal",
               type: "text",
+              autoFocus: true,
               "aria-label": "Amount in BTC",
             })
           ),
-          h(
-            "div",
-            { className: "buy-usd" },
-            "≈ $" + usdValue.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " USD"
-          ),
-          h(
-            "div",
-            { className: "buy-balance" },
-            "Available ",
-            h("strong", null, "$" + balance.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })),
-            h("button", {
-              className: "max",
-              onClick: () => setAmount(price ? (balance / price).toFixed(8).replace(/\.?0+$/, "") : ""),
-            }, "MAX")
+          h("div", { className: "buy-info-slot" },
+            h(AnimatePresence, { mode: "wait" },
+              // State 1: empty → show available balance
+              isEmpty && !overBalance && h(motion.div, {
+                key: "balance",
+                className: "buy-balance",
+                initial: { opacity: 0, y: 8 },
+                animate: { opacity: 1, y: 0 },
+                exit: { opacity: 0, y: -12 },
+                transition: { duration: 0.25, ease: [0.22, 1, 0.36, 1] },
+              },
+                "Available ",
+                h("strong", null, "$" + balance.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })),
+                h("button", {
+                  className: "max",
+                  onClick: () => setAmount(price ? (balance / price * 0.9999).toFixed(8).replace(/\.?0+$/, "") : ""),
+                }, "MAX")
+              ),
+              // State 2: has amount, within balance → show USD conversion
+              !isEmpty && !overBalance && h(motion.div, {
+                key: "usd",
+                className: "buy-usd",
+                initial: { opacity: 0, y: 8 },
+                animate: { opacity: 1, y: 0 },
+                exit: { opacity: 0, y: -12 },
+                transition: { duration: 0.25, ease: [0.22, 1, 0.36, 1] },
+              },
+                "≈ $" + usdValue.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " USD"
+              ),
+              // State 3: exceeds balance → show balance in red
+              overBalance && h(motion.div, {
+                key: "over",
+                className: "buy-balance over",
+                initial: { opacity: 0, y: 8 },
+                animate: { opacity: 1, y: 0 },
+                exit: { opacity: 0, y: -12 },
+                transition: { duration: 0.25, ease: [0.22, 1, 0.36, 1] },
+              },
+                "Exceeds available ",
+                h("strong", null, "$" + balance.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }))
+              )
+            )
           )
         );
       }
