@@ -399,8 +399,7 @@
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        gap: var(--space-3);
-        padding: 0 var(--space-2);
+        padding: 90px var(--space-2) 0;
       }
       .buy-display {
         display: inline-flex;
@@ -502,32 +501,34 @@
       }
       .buy-balance .max:hover { background: rgba(12, 15, 20, 0.1); }
 
+      /* ── Shared amount (persists across buy ↔ review) ───── */
+      .shared-amount-wrap {
+        position: absolute;
+        left: 0; right: 0;
+        top: 0; bottom: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        z-index: 2;
+        pointer-events: none;
+      }
+      .shared-amount-wrap > * { pointer-events: auto; }
+      .shared-amount-wrap.is-buy {
+        justify-content: center;
+        gap: var(--space-3);
+      }
+      .shared-amount-wrap.is-review {
+        justify-content: flex-start;
+        gap: 4px;
+      }
+
       /* ── Review panel ────────────────────────────────────── */
       .review-panel {
         flex: 1;
         display: flex;
         flex-direction: column;
-        padding: 0 var(--space-1);
+        padding: 68px var(--space-1) 0;
         overflow-y: auto;
-      }
-      .review-hero {
-        text-align: center;
-        margin-bottom: var(--space-3);
-      }
-      .review-hero .review-amount {
-        font-family: var(--sans);
-        font-weight: 700;
-        font-size: 28px;
-        letter-spacing: -0.02em;
-        color: var(--ink);
-        line-height: 1.1;
-      }
-      .review-hero .review-usd {
-        font-family: var(--mono);
-        font-size: 11px;
-        letter-spacing: 0.06em;
-        color: var(--ink-3);
-        margin-top: 2px;
       }
       .review-rows {
         display: flex;
@@ -573,7 +574,7 @@
         padding: 3px 22px 3px 8px;
         cursor: pointer;
         outline: none;
-        text-align: right;
+        text-align: left;
         background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%234a5260' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
         background-repeat: no-repeat;
         background-position: right 6px center;
@@ -1062,99 +1063,36 @@
         return 24;
       }
 
-      function BuyPanel({ amount, setAmount, balance, price }) {
-        const inputRef = useRef(null);
-        const display = amount === "" ? "0" : amount;
-        const fontSize = fontSizeForLength(display.length + 4); // + "BTC"
-        const btcAmount = parseFloat(amount || "0");
-        const usdValue = btcAmount * (price || 0);
-        const isEmpty = btcAmount <= 0;
-        const overBalance = usdValue > balance;
-
-        useEffect(() => {
-          if (inputRef.current) inputRef.current.focus();
-        }, []);
-
-        const handleChange = (e) => {
-          let v = e.target.value.replace(/[^0-9.]/g, "");
-          const parts = v.split(".");
-          if (parts.length > 2) v = parts[0] + "." + parts.slice(1).join("");
-          // BTC: allow up to 8 decimal places
-          if (parts[1] && parts[1].length > 8) v = parts[0] + "." + parts[1].slice(0, 8);
-          if (v.length > 12) return;
-          setAmount(v);
-        };
-
-        return h(
-          "div",
-          { className: "buy-panel", onClick: () => inputRef.current && inputRef.current.focus() },
-          h(
-            "div",
-            {
-              className: "buy-display",
-              style: { fontSize: fontSize + "px" },
-              onClick: () => inputRef.current && inputRef.current.focus(),
+      function BuyPanel({ isEmpty, overBalance, balance, usdValue, setAmount, price }) {
+        return h("div", { className: "buy-info-slot" },
+          h(AnimatePresence, { mode: "wait" },
+            // State 1: empty → show available balance
+            isEmpty && !overBalance && h(motion.div, {
+              key: "balance",
+              className: "buy-balance",
+              initial: { opacity: 0, y: 8 },
+              animate: { opacity: 1, y: 0 },
+              exit: { opacity: 0, y: -12 },
+              transition: { duration: 0.25, ease: [0.22, 1, 0.36, 1] },
             },
-            h(
-              "span",
-              { className: "number" + (amount === "" ? " zero" : "") },
-              display
+              "Available ",
+              h("strong", null, "$" + balance.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })),
+              h("button", {
+                className: "max",
+                onClick: () => setAmount(price ? (balance / price * 0.9999).toFixed(8).replace(/\.?0+$/, "") : ""),
+              }, "MAX")
             ),
-            h("span", { className: "caret" }),
-            h("span", { className: "unit" }, "BTC"),
-            h("input", {
-              ref: inputRef,
-              className: "buy-input-hidden",
-              value: amount,
-              onChange: handleChange,
-              onBlur: () => setTimeout(() => inputRef.current && inputRef.current.focus(), 0),
-              inputMode: "decimal",
-              type: "text",
-              autoFocus: true,
-              "aria-label": "Amount in BTC",
-            })
-          ),
-          h("div", { className: "buy-info-slot" },
-            h(AnimatePresence, { mode: "wait" },
-              // State 1: empty → show available balance
-              isEmpty && !overBalance && h(motion.div, {
-                key: "balance",
-                className: "buy-balance",
-                initial: { opacity: 0, y: 8 },
-                animate: { opacity: 1, y: 0 },
-                exit: { opacity: 0, y: -12 },
-                transition: { duration: 0.25, ease: [0.22, 1, 0.36, 1] },
-              },
-                "Available ",
-                h("strong", null, "$" + balance.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })),
-                h("button", {
-                  className: "max",
-                  onClick: () => setAmount(price ? (balance / price * 0.9999).toFixed(8).replace(/\.?0+$/, "") : ""),
-                }, "MAX")
-              ),
-              // State 2: has amount, within balance → show USD conversion
-              !isEmpty && !overBalance && h(motion.div, {
-                key: "usd",
-                className: "buy-usd",
-                initial: { opacity: 0, y: 8 },
-                animate: { opacity: 1, y: 0 },
-                exit: { opacity: 0, y: -12 },
-                transition: { duration: 0.25, ease: [0.22, 1, 0.36, 1] },
-              },
-                "≈ $" + usdValue.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " USD"
-              ),
-              // State 3: exceeds balance → show balance in red
-              overBalance && h(motion.div, {
-                key: "over",
-                className: "buy-balance over",
-                initial: { opacity: 0, y: 8 },
-                animate: { opacity: 1, y: 0 },
-                exit: { opacity: 0, y: -12 },
-                transition: { duration: 0.25, ease: [0.22, 1, 0.36, 1] },
-              },
-                "Exceeds available ",
-                h("strong", null, "$" + balance.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }))
-              )
+            // State 2: exceeds balance → show balance in red
+            overBalance && h(motion.div, {
+              key: "over",
+              className: "buy-balance over",
+              initial: { opacity: 0, y: 8 },
+              animate: { opacity: 1, y: 0 },
+              exit: { opacity: 0, y: -12 },
+              transition: { duration: 0.25, ease: [0.22, 1, 0.36, 1] },
+            },
+              "Exceeds available ",
+              h("strong", null, "$" + balance.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }))
             )
           )
         );
@@ -1167,13 +1105,13 @@
         "Bank of America · Checking",
       ];
       const WALLETS_TO = [
-        "Coinbase · BTC Wallet",
-        "Ledger Nano · Cold Storage",
-        "MetaMask · Hot Wallet",
+        "Tri-Party · BNY Mellon Collateral",
+        "Settlement · DTCC Omni Account",
+        "Loan Facility · JPM Margin Pledge",
       ];
       const NETWORKS = ["Bitcoin", "Lightning"];
 
-      function ReviewPanel({ amount, price, onBack, onSubmit }) {
+      function ReviewPanel({ amount, price }) {
         const [fromWallet, setFromWallet] = useState(WALLETS_FROM[0]);
         const [toWallet, setToWallet] = useState(WALLETS_TO[0]);
         const [network, setNetwork] = useState(NETWORKS[0]);
@@ -1186,14 +1124,6 @@
         const timeStr = now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
 
         return h("div", { className: "review-panel" },
-          h("div", { className: "review-hero" },
-            h("div", { className: "review-amount" },
-              btc.toLocaleString("en-US", { maximumFractionDigits: 8 }) + " BTC"
-            ),
-            h("div", { className: "review-usd" },
-              "≈ $" + usd.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " USD"
-            )
-          ),
           h("div", { className: "review-rows" },
             h("div", { className: "review-row" },
               h("span", { className: "rlabel" }, "From"),
@@ -1244,6 +1174,29 @@
         const [amount, setAmount]   = useState("");
         const cache = useRef({});
         const liveSeries = useRef([]); // 1D streaming buffer of live ticks
+        const buyInputRef = useRef(null);
+
+        // Derived buy values
+        const display = amount === "" ? "0" : amount;
+        const buyFontSize = fontSizeForLength(display.length + 4);
+        const btcAmountNum = parseFloat(amount || "0");
+        const usdValue = btcAmountNum * (price || 0);
+        const isEmpty = btcAmountNum <= 0;
+        const isOverBalance = usdValue > BALANCE;
+
+        const handleAmountChange = useCallback((e) => {
+          let v = e.target.value.replace(/[^0-9.]/g, "");
+          const parts = v.split(".");
+          if (parts.length > 2) v = parts[0] + "." + parts.slice(1).join("");
+          if (parts[1] && parts[1].length > 8) v = parts[0] + "." + parts[1].slice(0, 8);
+          if (v.length > 12) return;
+          setAmount(v);
+        }, []);
+
+        // Auto-focus the hidden input when entering buy mode
+        useEffect(() => {
+          if (mode === "buy" && buyInputRef.current) buyInputRef.current.focus();
+        }, [mode]);
 
         // Live BTC ticker via Binance WebSocket (updates ~1/sec). Falls back silently.
         useEffect(() => {
@@ -1423,7 +1376,76 @@
                   // swap area: chart-view OR buy-view OR review-view
                   h(
                     "div",
-                    { className: "swap", style: { height: mode === "review" ? 240 : 192 } },
+                    { className: "swap", style: { height: mode === "review" ? 270 : 192 } },
+                    // ── Shared amount layer — never unmounts between buy ↔ review ──
+                    h(AnimatePresence, null,
+                      (mode === "buy" || mode === "review") && h(
+                        motion.div,
+                        {
+                          key: "shared-amount",
+                          className: "shared-amount-wrap " + (mode === "review" ? "is-review" : "is-buy"),
+                          initial: { opacity: 0 },
+                          animate: { opacity: 1 },
+                          exit: { opacity: 0 },
+                          transition: { opacity: { duration: 0.2 } },
+                        },
+                        h(
+                          motion.div,
+                          {
+                            layout: true,
+                            className: "buy-display",
+                            style: { cursor: mode === "buy" ? "text" : "default" },
+                            onClick: mode === "buy" ? () => buyInputRef.current && buyInputRef.current.focus() : undefined,
+                            transition: {
+                              layout: { type: "spring", stiffness: 220, damping: 28 },
+                              fontSize: { type: "spring", stiffness: 220, damping: 28 },
+                            },
+                            animate: { fontSize: (mode === "review" ? 28 : buyFontSize) + "px" },
+                          },
+                          h("span", {
+                            className: "number" + (amount === "" ? " zero" : ""),
+                          }, display),
+                          mode === "buy" && h("span", { className: "caret" }),
+                          h("span", {
+                            className: "unit",
+                            style: mode === "review" ? {
+                              fontSize: "inherit",
+                              fontFamily: "var(--sans)",
+                              fontWeight: 700,
+                              color: "var(--ink)",
+                              transform: "none",
+                              letterSpacing: "-0.02em",
+                            } : {},
+                          }, mode === "review" ? " BTC" : "BTC"),
+                          mode === "buy" && h("input", {
+                            ref: buyInputRef,
+                            className: "buy-input-hidden",
+                            value: amount,
+                            onChange: handleAmountChange,
+                            onBlur: () => setTimeout(() => buyInputRef.current && buyInputRef.current.focus(), 0),
+                            inputMode: "decimal",
+                            type: "text",
+                            autoFocus: true,
+                            "aria-label": "Amount in BTC",
+                          })
+                        ),
+                        !isEmpty && !isOverBalance && h(
+                          motion.div,
+                          {
+                            layout: true,
+                            className: "buy-usd",
+                            initial: { opacity: 0, y: 4 },
+                            animate: { opacity: 1, y: 0 },
+                            transition: {
+                              layout: { type: "spring", stiffness: 220, damping: 28 },
+                              opacity: { duration: 0.25 },
+                            },
+                          },
+                          "≈ $" + usdValue.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " USD"
+                        )
+                      )
+                    ),
+                    // ── Mode-specific content ──
                     h(
                       AnimatePresence,
                       { mode: "wait", initial: false },
@@ -1460,12 +1482,13 @@
                         motion.div,
                         {
                           key: "buy-view",
+                          className: "buy-panel",
                           initial: { opacity: 0, y: 8 },
                           animate: { opacity: 1, y: 0 },
                           exit:    { opacity: 0, y: -8 },
                           transition: { duration: 0.28, ease: [0.22, 1, 0.36, 1] },
                         },
-                        h(BuyPanel, { amount, setAmount, balance: BALANCE, price })
+                        h(BuyPanel, { isEmpty, overBalance: isOverBalance, balance: BALANCE, usdValue, setAmount, price })
                       ),
                       mode === "review" && h(
                         motion.div,
@@ -1476,7 +1499,7 @@
                           exit:    { opacity: 0, y: -8 },
                           transition: { duration: 0.28, ease: [0.22, 1, 0.36, 1] },
                         },
-                        h(ReviewPanel, { amount, price, onBack: () => setMode("buy"), onSubmit: handleBuyOrTrade })
+                        h(ReviewPanel, { amount, price })
                       ),
                       mode === "loading" && h(
                         motion.div,
@@ -1515,7 +1538,7 @@
                           })
                         ),
                         h("div", { className: "success-text" },
-                          "Purchased " + (parseFloat(amount || "0")).toLocaleString("en-US", { maximumFractionDigits: 8 }) + " BTC"
+                          "Purchased " + btcAmountNum.toLocaleString("en-US", { maximumFractionDigits: 8 }) + " BTC"
                         ),
                         h("div", { className: "success-sub" }, "Order filled")
                       )
@@ -1536,9 +1559,7 @@
                         onClick: (e) => { e.stopPropagation(); setMode("buy"); },
                       }, "Back"),
                       (() => {
-                        const btcAmount = parseFloat(amount || "0");
-                        const usdValue = btcAmount * (price || 0);
-                        const invalid = mode === "buy" && (btcAmount <= 0 || usdValue > BALANCE);
+                        const invalid = mode === "buy" && (isEmpty || isOverBalance);
                         const disabled = mode === "loading" || mode === "success" || invalid;
                         const label = mode === "chart" ? "Trade" : mode === "review" ? "Submit order" : "Review";
                         return h("button", {
