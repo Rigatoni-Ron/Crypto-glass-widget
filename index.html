@@ -382,8 +382,8 @@
       /* swappable area between header and footer (chart OR buy panel) */
       .swap {
         position: relative;
-        height: 192px;
         margin-top: var(--space-4);
+        transition: height 0.35s cubic-bezier(0.22, 1, 0.36, 1);
       }
       .swap > * {
         position: absolute;
@@ -501,6 +501,89 @@
         margin-left: 4px;
       }
       .buy-balance .max:hover { background: rgba(12, 15, 20, 0.1); }
+
+      /* ── Review panel ────────────────────────────────────── */
+      .review-panel {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        padding: 0 var(--space-1);
+        overflow-y: auto;
+      }
+      .review-hero {
+        text-align: center;
+        margin-bottom: var(--space-3);
+      }
+      .review-hero .review-amount {
+        font-family: var(--sans);
+        font-weight: 700;
+        font-size: 28px;
+        letter-spacing: -0.02em;
+        color: var(--ink);
+        line-height: 1.1;
+      }
+      .review-hero .review-usd {
+        font-family: var(--mono);
+        font-size: 11px;
+        letter-spacing: 0.06em;
+        color: var(--ink-3);
+        margin-top: 2px;
+      }
+      .review-rows {
+        display: flex;
+        flex-direction: column;
+        gap: 0;
+        border-radius: 12px;
+        background: rgba(12, 15, 20, 0.025);
+        border: 1px solid rgba(255, 255, 255, 0.55);
+        overflow: hidden;
+      }
+      .review-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 8px 12px;
+      }
+      .review-row + .review-row {
+        border-top: 1px solid rgba(12, 15, 20, 0.06);
+      }
+      .review-row .rlabel {
+        font-family: var(--mono);
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: var(--ink-3);
+      }
+      .review-row .rvalue {
+        font-family: var(--sans);
+        font-size: 12px;
+        font-weight: 500;
+        color: var(--ink);
+        text-align: right;
+      }
+      .review-select {
+        appearance: none;
+        font-family: var(--sans);
+        font-size: 12px;
+        font-weight: 500;
+        color: var(--ink);
+        background: rgba(12, 15, 20, 0.04);
+        border: 1px solid rgba(12, 15, 20, 0.1);
+        border-radius: 6px;
+        padding: 3px 22px 3px 8px;
+        cursor: pointer;
+        outline: none;
+        text-align: right;
+        background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%234a5260' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right 6px center;
+        background-size: 10px 6px;
+        max-width: 180px;
+        text-overflow: ellipsis;
+      }
+      .review-select:hover {
+        background-color: rgba(12, 15, 20, 0.07);
+      }
 
       /* ── Status (loading / success) ─────────────────────── */
       .status-panel {
@@ -1077,10 +1160,83 @@
         );
       }
 
+      // ── Review panel ─────────────────────────────────────────────────
+      const WALLETS_FROM = [
+        "Coinbase Pro · USD",
+        "Coinbase · USD",
+        "Bank of America · Checking",
+      ];
+      const WALLETS_TO = [
+        "Coinbase · BTC Wallet",
+        "Ledger Nano · Cold Storage",
+        "MetaMask · Hot Wallet",
+      ];
+      const NETWORKS = ["Bitcoin", "Lightning"];
+
+      function ReviewPanel({ amount, price, onBack, onSubmit }) {
+        const [fromWallet, setFromWallet] = useState(WALLETS_FROM[0]);
+        const [toWallet, setToWallet] = useState(WALLETS_TO[0]);
+        const [network, setNetwork] = useState(NETWORKS[0]);
+
+        const btc = parseFloat(amount || "0");
+        const usd = btc * (price || 0);
+        const fee = network === "Lightning" ? 0 : 0.00012;
+        const now = new Date();
+        const dateStr = now.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+        const timeStr = now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+
+        return h("div", { className: "review-panel" },
+          h("div", { className: "review-hero" },
+            h("div", { className: "review-amount" },
+              btc.toLocaleString("en-US", { maximumFractionDigits: 8 }) + " BTC"
+            ),
+            h("div", { className: "review-usd" },
+              "≈ $" + usd.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " USD"
+            )
+          ),
+          h("div", { className: "review-rows" },
+            h("div", { className: "review-row" },
+              h("span", { className: "rlabel" }, "From"),
+              h("select", {
+                className: "review-select",
+                value: fromWallet,
+                onChange: (e) => setFromWallet(e.target.value),
+              }, WALLETS_FROM.map(w => h("option", { key: w, value: w }, w)))
+            ),
+            h("div", { className: "review-row" },
+              h("span", { className: "rlabel" }, "To"),
+              h("select", {
+                className: "review-select",
+                value: toWallet,
+                onChange: (e) => setToWallet(e.target.value),
+              }, WALLETS_TO.map(w => h("option", { key: w, value: w }, w)))
+            ),
+            h("div", { className: "review-row" },
+              h("span", { className: "rlabel" }, "Network"),
+              h("select", {
+                className: "review-select",
+                value: network,
+                onChange: (e) => setNetwork(e.target.value),
+              }, NETWORKS.map(n => h("option", { key: n, value: n }, n)))
+            ),
+            h("div", { className: "review-row" },
+              h("span", { className: "rlabel" }, "Network fee"),
+              h("span", { className: "rvalue" },
+                fee > 0 ? fee.toFixed(5) + " BTC" : "None"
+              )
+            ),
+            h("div", { className: "review-row" },
+              h("span", { className: "rlabel" }, "Date & time"),
+              h("span", { className: "rvalue" }, dateStr + " · " + timeStr)
+            )
+          )
+        );
+      }
+
       // ── Widget ─────────────────────────────────────────────────────────
       function CryptoGlassWidget() {
         const [open, setOpen]       = useState(false);
-        const [mode, setMode]       = useState("chart"); // 'chart' | 'buy'
+        const [mode, setMode]       = useState("chart"); // 'chart' | 'buy' | 'review'
         const [range, setRange]     = useState("1D");
         const [price, setPrice]     = useState(67482.10);
         const [delta, setDelta]     = useState(2.34);
@@ -1183,7 +1339,8 @@
         const handleBuyOrTrade = (e) => {
           e.stopPropagation();
           if (mode === "chart") { setMode("buy"); return; }
-          if (mode === "buy") {
+          if (mode === "buy") { setMode("review"); return; }
+          if (mode === "review") {
             setMode("loading");
             setTimeout(() => setMode("success"), 1100);
             setTimeout(() => {
@@ -1263,10 +1420,10 @@
                     transition: { ...spring, delay: 0.05 },
                     className: "body",
                   },
-                  // swap area: chart-view OR buy-view
+                  // swap area: chart-view OR buy-view OR review-view
                   h(
                     "div",
-                    { className: "swap" },
+                    { className: "swap", style: { height: mode === "review" ? 240 : 192 } },
                     h(
                       AnimatePresence,
                       { mode: "wait", initial: false },
@@ -1309,6 +1466,17 @@
                           transition: { duration: 0.28, ease: [0.22, 1, 0.36, 1] },
                         },
                         h(BuyPanel, { amount, setAmount, balance: BALANCE, price })
+                      ),
+                      mode === "review" && h(
+                        motion.div,
+                        {
+                          key: "review-view",
+                          initial: { opacity: 0, y: 8 },
+                          animate: { opacity: 1, y: 0 },
+                          exit:    { opacity: 0, y: -8 },
+                          transition: { duration: 0.28, ease: [0.22, 1, 0.36, 1] },
+                        },
+                        h(ReviewPanel, { amount, price, onBack: () => setMode("buy"), onSubmit: handleBuyOrTrade })
                       ),
                       mode === "loading" && h(
                         motion.div,
@@ -1363,17 +1531,22 @@
                         className: "cancel",
                         onClick: (e) => { e.stopPropagation(); setAmount(""); setMode("chart"); },
                       }, "Cancel"),
+                      mode === "review" && h("button", {
+                        className: "cancel",
+                        onClick: (e) => { e.stopPropagation(); setMode("buy"); },
+                      }, "Back"),
                       (() => {
                         const btcAmount = parseFloat(amount || "0");
                         const usdValue = btcAmount * (price || 0);
                         const invalid = mode === "buy" && (btcAmount <= 0 || usdValue > BALANCE);
                         const disabled = mode === "loading" || mode === "success" || invalid;
+                        const label = mode === "chart" ? "Trade" : mode === "review" ? "Submit order" : "Review";
                         return h("button", {
                           className: "buy",
                           onClick: handleBuyOrTrade,
                           disabled,
                           style: { opacity: disabled ? 0.4 : 1, cursor: disabled ? "not-allowed" : "pointer" },
-                        }, mode === "chart" ? "Trade" : "Buy");
+                        }, label);
                       })()
                     )
                   )
