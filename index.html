@@ -1432,16 +1432,17 @@
                             "aria-label": "Amount in BTC",
                           })
                         ),
-                        !isEmpty && !isOverBalance && h(
+                        h(
                           motion.div,
                           {
                             layout: true,
                             className: "buy-usd",
-                            initial: { opacity: 0, y: 4 },
-                            animate: { opacity: 1, y: 0 },
+                            animate: {
+                              opacity: (!isEmpty && !isOverBalance) || mode === "review" ? 1 : 0,
+                            },
                             transition: {
                               layout: { type: "spring", stiffness: 220, damping: 28 },
-                              opacity: { duration: 0.25 },
+                              opacity: { duration: 0.2 },
                             },
                           },
                           "≈ $" + usdValue.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " USD"
