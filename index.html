@@ -514,8 +514,16 @@
       }
       .shared-amount-wrap > * { pointer-events: auto; }
       .shared-amount-wrap.is-buy {
-        justify-content: center;
-        gap: var(--space-3);
+        justify-content: flex-start;
+        gap: 0;
+      }
+      .shared-amount-wrap.is-buy .buy-display {
+        margin-top: 56px;
+      }
+      .shared-amount-wrap.is-buy .buy-info-slot {
+        position: absolute;
+        bottom: 36px;
+        left: 0; right: 0;
       }
       .shared-amount-wrap.is-review {
         justify-content: flex-start;
@@ -855,6 +863,127 @@
         );
       }
 
+      // Rolling USD display with directional scroll and animated commas/symbols.
+      function UsdRoller({ value }) {
+        const prevRef = useRef(value);
+        const prev = prevRef.current;
+        useEffect(() => { prevRef.current = value; }, [value]);
+        const goingUp = value >= prev;
+
+        const str = String(value);
+        const chars = str.split("");
+
+        return h(
+          "span",
+          { className: "roller" },
+          h(AnimatePresence, { initial: false },
+            chars.map((c, i) => {
+              if (/[0-9]/.test(c)) {
+                const d = parseInt(c, 10);
+                return h(
+                  "span",
+                  { key: "d" + (str.length - i), className: "digit" },
+                  h(
+                    motion.span,
+                    {
+                      className: "digit-track",
+                      animate: { y: `-${d}em` },
+                      transition: { type: "spring", stiffness: 300, damping: 28, mass: 0.8 },
+                    },
+                    goingUp
+                      ? Array.from({ length: 10 }, (_, n) => h("span", { key: n }, String(n)))
+                      : Array.from({ length: 10 }, (_, n) => h("span", { key: 9 - n }, String(9 - n)))
+                  )
+                );
+              }
+              // Commas, dots, $ — animate in/out
+              return h(
+                motion.span,
+                {
+                  key: "s" + (str.length - i),
+                  className: "static",
+                  initial: { opacity: 0, width: 0 },
+                  animate: { opacity: 1, width: "auto" },
+                  exit: { opacity: 0, width: 0 },
+                  transition: { duration: 0.2, ease: [0.22, 1, 0.36, 1] },
+                  style: { overflow: "hidden", display: "inline-block" },
+                },
+                c
+              );
+            })
+          )
+        );
+      }
+
+      // Format a numeric string with commas in the integer part
+      function addCommas(str) {
+        const parts = str.split(".");
+        parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+        return parts.join(".");
+      }
+
+      // Animated amount display — digits are static, commas slide with an arc
+      function AmountDisplay({ value, isEmpty }) {
+        const parts = value.split(".");
+        const intPart = parts[0] || "0";
+        const decPart = parts[1];
+        const formattedInt = addCommas(intPart);
+
+        // Detect when commas shift (integer length changed)
+        const prevIntLen = useRef(intPart.length);
+        const commaShifted = intPart.length !== prevIntLen.current;
+        useEffect(() => { prevIntLen.current = intPart.length; });
+
+        const items = [];
+        let digitPos = 0;
+        let commaIdx = 0;
+        for (let i = formattedInt.length - 1; i >= 0; i--) {
+          const c = formattedInt[i];
+          if (c === ",") {
+            commaIdx++;
+            items.unshift({ c, key: "comma-" + commaIdx, isComma: true });
+          } else {
+            items.unshift({ c, key: "d-" + digitPos, isComma: false });
+            digitPos++;
+          }
+        }
+        if (decPart !== undefined) {
+          items.push({ c: ".", key: "dot", isComma: false });
+          for (let i = 0; i < decPart.length; i++) {
+            items.push({ c: decPart[i], key: "dec-" + i, isComma: false });
+          }
+        }
+
+        return h(
+          "span",
+          { className: "number" + (isEmpty ? " zero" : ""), style: { display: "inline-flex", alignItems: "baseline" } },
+          h(AnimatePresence, { initial: false, mode: "popLayout" },
+            items.map(item => {
+              if (item.isComma) {
+                return h(motion.span, {
+                  key: item.key,
+                  layout: true,
+                  initial: { opacity: 0, width: 0 },
+                  animate: {
+                    opacity: 1,
+                    width: "auto",
+                    y: commaShifted ? [0, 16, 0] : 0,
+                  },
+                  exit: { opacity: 0, width: 0 },
+                  transition: {
+                    layout: { type: "spring", stiffness: 280, damping: 26 },
+                    y: { duration: 0.38, ease: [0.33, 1, 0.68, 1] },
+                    default: { duration: 0.18, ease: [0.22, 1, 0.36, 1] },
+                  },
+                  style: { display: "inline-block", overflow: "hidden" },
+                }, item.c);
+              }
+              return h("span", { key: item.key }, item.c);
+            })
+          )
+        );
+      }
+
       function fmtDelta(n) {
         const up = n >= 0;
         return { text: `${up ? "▲" : "▼"} ${Math.abs(n).toFixed(2)}%`, up };
@@ -1054,7 +1183,7 @@
       }
 
       // ── Buy panel ──────────────────────────────────────────────────────
-      const BALANCE = 14273845.83; // USD
+      const BALANCE = 34273845.83; // USD
 
       function fontSizeForLength(len) {
         if (len <= 4) return 68;
@@ -1065,39 +1194,8 @@
         return 24;
       }
 
-      function BuyPanel({ isEmpty, overBalance, balance, usdValue, setAmount, price }) {
-        return h("div", { className: "buy-info-slot" },
-          h(AnimatePresence, { mode: "wait" },
-            // State 1: empty → show available balance
-            isEmpty && !overBalance && h(motion.div, {
-              key: "balance",
-              className: "buy-balance",
-              initial: { opacity: 0, y: 8 },
-              animate: { opacity: 1, y: 0 },
-              exit: { opacity: 0, y: -12 },
-              transition: { duration: 0.25, ease: [0.22, 1, 0.36, 1] },
-            },
-              "Available ",
-              h("strong", null, "$" + balance.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })),
-              h("button", {
-                className: "max",
-                onClick: () => setAmount(price ? (balance / price * 0.9999).toFixed(8).replace(/\.?0+$/, "") : ""),
-              }, "MAX")
-            ),
-            // State 2: exceeds balance → show balance in red
-            overBalance && h(motion.div, {
-              key: "over",
-              className: "buy-balance over",
-              initial: { opacity: 0, y: 8 },
-              animate: { opacity: 1, y: 0 },
-              exit: { opacity: 0, y: -12 },
-              transition: { duration: 0.25, ease: [0.22, 1, 0.36, 1] },
-            },
-              "Exceeds available ",
-              h("strong", null, "$" + balance.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }))
-            )
-          )
-        );
+      function BuyPanel() {
+        return null;
       }
 
       // ── Review panel ─────────────────────────────────────────────────
@@ -1111,7 +1209,7 @@
         "Settlement · DTCC Omni Account",
         "Loan Facility · JPM Margin Pledge",
       ];
-      const NETWORKS = ["Bitcoin", "Lightning"];
+      const NETWORKS = ["Ethereum", "Arbitrum", "Optimism"];
 
       function ReviewPanel({ amount, price }) {
         const [fromWallet, setFromWallet] = useState(WALLETS_FROM[0]);
@@ -1120,7 +1218,7 @@
 
         const btc = parseFloat(amount || "0");
         const usd = btc * (price || 0);
-        const fee = network === "Lightning" ? 0 : 0.00012;
+        const fee = network === "Ethereum" ? 0.0025 : 0.0001;
         const now = new Date();
         const dateStr = now.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
         const timeStr = now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
@@ -1154,7 +1252,7 @@
             h("div", { className: "review-row" },
               h("span", { className: "rlabel" }, "Network fee"),
               h("span", { className: "rvalue" },
-                fee > 0 ? fee.toFixed(5) + " BTC" : "None"
+                fee > 0 ? fee.toFixed(5) + " ETH" : "None"
               )
             ),
             h("div", { className: "review-row" },
@@ -1170,19 +1268,28 @@
         const [open, setOpen]       = useState(false);
         const [mode, setMode]       = useState("chart"); // 'chart' | 'buy' | 'review'
         const [range, setRange]     = useState("1D");
-        const [price, setPrice]     = useState(67482.10);
+        const [price, setPrice]     = useState(1632.50);
         const [delta, setDelta]     = useState(2.34);
         const [paths, setPaths]     = useState({});
         const [amount, setAmount]   = useState("");
+        const [buyPrice, setBuyPrice] = useState(null);
         const cache = useRef({});
         const liveSeries = useRef([]); // 1D streaming buffer of live ticks
         const buyInputRef = useRef(null);
 
-        // Derived buy values
+        // Snapshot price when entering buy mode
+        useEffect(() => {
+          if (mode === "buy" && buyPrice === null) setBuyPrice(price);
+          if (mode === "chart") setBuyPrice(null);
+        }, [mode]);
+
+        // Derived buy values — use snapshotted price during buy/review
         const display = amount === "" ? "0" : amount;
-        const buyFontSize = fontSizeForLength(display.length + 4);
+        const formattedDisplay = addCommas(display);
+        const buyFontSize = fontSizeForLength(formattedDisplay.length + 4);
         const btcAmountNum = parseFloat(amount || "0");
-        const usdValue = btcAmountNum * (price || 0);
+        const effectivePrice = buyPrice || price;
+        const usdValue = btcAmountNum * (effectivePrice || 0);
         const isEmpty = btcAmountNum <= 0;
         const isOverBalance = usdValue > BALANCE;
 
@@ -1200,11 +1307,11 @@
           if (mode === "buy" && buyInputRef.current) buyInputRef.current.focus();
         }, [mode]);
 
-        // Live BTC ticker via Binance WebSocket (updates ~1/sec). Falls back silently.
+        // Live ETH ticker via Binance WebSocket (updates ~1/sec). Falls back silently.
         useEffect(() => {
           let ws;
           try {
-            ws = new WebSocket("wss://stream.binance.com:9443/ws/btcusdt@ticker");
+            ws = new WebSocket("wss://stream.binance.com:9443/ws/ethusdt@ticker");
             ws.onmessage = (ev) => {
               try {
                 const m = JSON.parse(ev.data);
@@ -1226,7 +1333,7 @@
               }));
               return;
             }
-            fetch(`${GECKO_BASE}/coins/bitcoin/market_chart?vs_currency=usd&days=1`)
+            fetch(`${GECKO_BASE}/coins/ethereum/market_chart?vs_currency=usd&days=1`)
               .then(res => res.ok ? res.json() : null)
               .then(data => {
                 if (!data || !data.prices) return;
@@ -1247,7 +1354,7 @@
             setPaths(prev => ({ ...prev, [r]: pricesToPath(cache.current[r]) }));
             return;
           }
-          fetch(`${GECKO_BASE}/coins/bitcoin/market_chart?vs_currency=usd&days=${GECKO_DAYS[r]}`)
+          fetch(`${GECKO_BASE}/coins/ethereum/market_chart?vs_currency=usd&days=${GECKO_DAYS[r]}`)
             .then(res => res.ok ? res.json() : null)
             .then(data => {
               if (!data || !data.prices) return;
@@ -1322,10 +1429,19 @@
               onClick: () => setOpen((o) => !o),
             },
             h("div", { className: "asset" },
-              h("div", { className: "coin" }, "₿"),
+              h("div", { className: "coin" },
+                h("svg", { width: 18, height: 18, viewBox: "0 0 256 417", fill: "none", xmlns: "http://www.w3.org/2000/svg" },
+                  h("path", { d: "M127.961 0L125.166 9.5V285.168L127.961 287.958L255.923 212.32L127.961 0Z", fill: "rgba(255,255,255,0.9)" }),
+                  h("path", { d: "M127.962 0L0 212.32L127.962 287.958V154.158V0Z", fill: "white" }),
+                  h("path", { d: "M127.961 312.187L126.386 314.107V412.306L127.961 416.905L255.999 236.587L127.961 312.187Z", fill: "rgba(255,255,255,0.9)" }),
+                  h("path", { d: "M127.962 416.905V312.187L0 236.587L127.962 416.905Z", fill: "white" }),
+                  h("path", { d: "M127.961 287.958L255.923 212.32L127.961 154.159V287.958Z", fill: "rgba(255,255,255,0.6)" }),
+                  h("path", { d: "M0 212.32L127.962 287.958V154.159L0 212.32Z", fill: "rgba(255,255,255,0.8)" })
+                )
+              ),
               h("div", { className: "ticker" },
-                h("div", { className: "sym" }, "Bitcoin"),
-                h("div", { className: "name" }, "BTC / USD")
+                h("div", { className: "sym" }, "Ethereum"),
+                h("div", { className: "name" }, "ETH / USD")
               )
             ),
             h(
@@ -1405,9 +1521,7 @@
                             },
                             animate: { fontSize: (mode === "review" ? 28 : buyFontSize) + "px" },
                           },
-                          h("span", {
-                            className: "number" + (amount === "" ? " zero" : ""),
-                          }, display),
+                          h(AmountDisplay, { value: display, isEmpty: amount === "" }),
                           mode === "buy" && h("span", { className: "caret" }),
                           h("span", {
                             className: "unit",
@@ -1419,7 +1533,7 @@
                               transform: "none",
                               letterSpacing: "-0.02em",
                             } : {},
-                          }, mode === "review" ? " BTC" : "BTC"),
+                          }, mode === "review" ? " ETH" : "ETH"),
                           mode === "buy" && h("input", {
                             ref: buyInputRef,
                             className: "buy-input-hidden",
@@ -1433,19 +1547,62 @@
                           })
                         ),
                         h(
-                          motion.div,
+                          "div",
                           {
-                            layout: true,
-                            className: "buy-usd",
-                            animate: {
-                              opacity: (!isEmpty && !isOverBalance) || mode === "review" ? 1 : 0,
-                            },
-                            transition: {
-                              layout: { type: "spring", stiffness: 220, damping: 28 },
-                              opacity: { duration: 0.2 },
-                            },
+                            className: "buy-info-slot",
                           },
-                          "≈ $" + usdValue.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " USD"
+                          h(AnimatePresence, { mode: "wait" },
+                            mode === "buy" && isEmpty && !isOverBalance && h(motion.div, {
+                              key: "balance",
+                              className: "buy-balance",
+                              initial: { opacity: 0 },
+                              animate: { opacity: 1 },
+                              exit: { opacity: 0 },
+                              transition: { duration: 0.2 },
+                            },
+                              "Available ",
+                              h("strong", null, "$" + BALANCE.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })),
+                              h("button", {
+                                className: "max",
+                                onClick: () => setAmount(price ? (BALANCE / price * 0.9999).toFixed(8).replace(/\.?0+$/, "") : ""),
+                              }, "MAX")
+                            ),
+                            mode === "buy" && !isEmpty && !isOverBalance && h(motion.div, {
+                              key: "usd",
+                              className: "buy-usd",
+                              initial: { opacity: 0 },
+                              animate: { opacity: 1 },
+                              exit: { opacity: 0 },
+                              transition: { duration: 0.2 },
+                            },
+                              "≈ ",
+                              h(UsdRoller, { value: "$" + usdValue.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }),
+                              " USD"
+                            ),
+                            mode === "buy" && isOverBalance && h(motion.div, {
+                              key: "over",
+                              className: "buy-balance over",
+                              initial: { opacity: 0 },
+                              animate: { opacity: 1 },
+                              exit: { opacity: 0 },
+                              transition: { duration: 0.2 },
+                            },
+                              "Exceeds available ",
+                              h("strong", null, "$" + BALANCE.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }))
+                            ),
+                            mode === "review" && h(motion.div, {
+                              key: "review-usd",
+                              className: "buy-usd",
+                              initial: { opacity: 0 },
+                              animate: { opacity: 1 },
+                              exit: { opacity: 0 },
+                              transition: { duration: 0.2 },
+                            },
+                              "≈ ",
+                              h(UsdRoller, { value: "$" + usdValue.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }),
+                              " USD"
+                            )
+                          )
                         )
                       )
                     ),
@@ -1542,7 +1699,7 @@
                           })
                         ),
                         h("div", { className: "success-text" },
-                          "Purchased " + btcAmountNum.toLocaleString("en-US", { maximumFractionDigits: 8 }) + " BTC"
+                          "Purchased " + btcAmountNum.toLocaleString("en-US", { maximumFractionDigits: 8 }) + " ETH"
                         ),
                         h("div", { className: "success-sub" }, "Order filled")
                       )
