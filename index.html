@@ -514,11 +514,12 @@
       }
       .shared-amount-wrap > * { pointer-events: auto; }
       .shared-amount-wrap.is-buy {
-        justify-content: flex-start;
+        justify-content: flex-end;
         gap: 0;
+        padding-bottom: 88px; /* 36 (info-slot bottom) + 20 (info-slot height) + 32 (gap) */
       }
       .shared-amount-wrap.is-buy .buy-display {
-        margin-top: 56px;
+        margin-top: 0;
       }
       .shared-amount-wrap.is-buy .buy-info-slot {
         position: absolute;
@@ -742,7 +743,7 @@
     <script type="module">
       import React, { useState, useMemo, useEffect, useRef, useCallback } from "react";
       import { createRoot } from "react-dom/client";
-      import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
+      import { motion, AnimatePresence, LayoutGroup, useMotionValue, animate as animateValue } from "framer-motion";
 
       const h = React.createElement;
 
@@ -922,17 +923,45 @@
         return parts.join(".");
       }
 
+      // Single comma. Uses a motion value for y that framer animates
+      // imperatively from onLayoutAnimationStart — this way parent
+      // re-renders (e.g. WebSocket price ticks) cannot interrupt the arc.
+      function AnimatedComma({ char }) {
+        const y = useMotionValue(14);
+        return h(motion.span, {
+          layout: true,
+          initial: { opacity: 0, width: 0 },
+          animate: { opacity: 1, width: "auto" },
+          exit: { opacity: 0, width: 0 },
+          transition: {
+            layout: { duration: 0.46, ease: [0.33, 1, 0.68, 1] },
+            opacity: { duration: 0.18 },
+            width: { duration: 0.2, ease: [0.22, 1, 0.36, 1] },
+          },
+          style: {
+            display: "inline-block",
+            clipPath: "inset(-2em 0 -2em 0)",
+            y,
+          },
+          onAnimationStart: () => {
+            animateValue(y, [null, 0], { duration: 0.28, ease: [0.33, 1, 0.68, 1] });
+          },
+          onLayoutAnimationStart: () => {
+            animateValue(y, [0, 18, 0], {
+              duration: 0.46,
+              times: [0, 0.5, 1],
+              ease: ["easeOut", "easeIn"],
+            });
+          },
+        }, char);
+      }
+
       // Animated amount display — digits are static, commas slide with an arc
       function AmountDisplay({ value, isEmpty }) {
         const parts = value.split(".");
         const intPart = parts[0] || "0";
         const decPart = parts[1];
         const formattedInt = addCommas(intPart);
-
-        // Detect when commas shift (integer length changed)
-        const prevIntLen = useRef(intPart.length);
-        const commaShifted = intPart.length !== prevIntLen.current;
-        useEffect(() => { prevIntLen.current = intPart.length; });
 
         const items = [];
         let digitPos = 0;
@@ -956,31 +985,8 @@
 
         return h(
           "span",
-          { className: "number" + (isEmpty ? " zero" : ""), style: { display: "inline-flex", alignItems: "baseline" } },
-          h(AnimatePresence, { initial: false, mode: "popLayout" },
-            items.map(item => {
-              if (item.isComma) {
-                return h(motion.span, {
-                  key: item.key,
-                  layout: true,
-                  initial: { opacity: 0, width: 0 },
-                  animate: {
-                    opacity: 1,
-                    width: "auto",
-                    y: commaShifted ? [0, 16, 0] : 0,
-                  },
-                  exit: { opacity: 0, width: 0 },
-                  transition: {
-                    layout: { type: "spring", stiffness: 280, damping: 26 },
-                    y: { duration: 0.38, ease: [0.33, 1, 0.68, 1] },
-                    default: { duration: 0.18, ease: [0.22, 1, 0.36, 1] },
-                  },
-                  style: { display: "inline-block", overflow: "hidden" },
-                }, item.c);
-              }
-              return h("span", { key: item.key }, item.c);
-            })
-          )
+          { className: "number" + (isEmpty ? " zero" : "") },
+          items.map(item => h("span", { key: item.key }, item.c))
         );
       }
 
@@ -1276,6 +1282,7 @@
         const cache = useRef({});
         const liveSeries = useRef([]); // 1D streaming buffer of live ticks
         const buyInputRef = useRef(null);
+        const pendingCursorEnd = useRef(false);
 
         // Snapshot price when entering buy mode
         useEffect(() => {
@@ -1306,6 +1313,18 @@
         useEffect(() => {
           if (mode === "buy" && buyInputRef.current) buyInputRef.current.focus();
         }, [mode]);
+
+        // After MAX (or any programmatic set), park cursor at end so backspace works
+        useEffect(() => {
+          if (!pendingCursorEnd.current) return;
+          const el = buyInputRef.current;
+          if (el) {
+            el.focus();
+            const len = el.value.length;
+            try { el.setSelectionRange(len, len); } catch (_) {}
+          }
+          pendingCursorEnd.current = false;
+        }, [amount]);
 
         // Live ETH ticker via Binance WebSocket (updates ~1/sec). Falls back silently.
         useEffect(() => {
@@ -1564,7 +1583,12 @@
                               h("strong", null, "$" + BALANCE.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })),
                               h("button", {
                                 className: "max",
-                                onClick: () => setAmount(price ? (BALANCE / price * 0.9999).toFixed(8).replace(/\.?0+$/, "") : ""),
+                                onMouseDown: (e) => e.preventDefault(),
+                                onClick: () => {
+                                  const v = price ? (BALANCE / price * 0.9999).toFixed(8).replace(/\.?0+$/, "") : "";
+                                  pendingCursorEnd.current = true;
+                                  setAmount(v);
+                                },
                               }, "MAX")
                             ),
                             mode === "buy" && !isEmpty && !isOverBalance && h(motion.div, {
