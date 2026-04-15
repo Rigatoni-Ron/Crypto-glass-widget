@@ -1566,9 +1566,11 @@
                           })
                         ),
                         h(
-                          "div",
+                          motion.div,
                           {
+                            layout: true,
                             className: "buy-info-slot",
+                            transition: { layout: { type: "spring", stiffness: 220, damping: 28 } },
                           },
                           h(AnimatePresence, { mode: "wait" },
                             mode === "buy" && isEmpty && !isOverBalance && h(motion.div, {
@@ -1591,13 +1593,14 @@
                                 },
                               }, "MAX")
                             ),
-                            mode === "buy" && !isEmpty && !isOverBalance && h(motion.div, {
+                            ((mode === "buy" && !isEmpty && !isOverBalance) || mode === "review") && h(motion.div, {
                               key: "usd",
+                              layout: true,
                               className: "buy-usd",
                               initial: { opacity: 0 },
                               animate: { opacity: 1 },
                               exit: { opacity: 0 },
-                              transition: { duration: 0.2 },
+                              transition: { duration: 0.2, layout: { type: "spring", stiffness: 220, damping: 28 } },
                             },
                               "≈ ",
                               h(UsdRoller, { value: "$" + usdValue.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }),
@@ -1613,18 +1616,6 @@
                             },
                               "Exceeds available ",
                               h("strong", null, "$" + BALANCE.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }))
-                            ),
-                            mode === "review" && h(motion.div, {
-                              key: "review-usd",
-                              className: "buy-usd",
-                              initial: { opacity: 0 },
-                              animate: { opacity: 1 },
-                              exit: { opacity: 0 },
-                              transition: { duration: 0.2 },
-                            },
-                              "≈ ",
-                              h(UsdRoller, { value: "$" + usdValue.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }),
-                              " USD"
                             )
                           )
                         )
