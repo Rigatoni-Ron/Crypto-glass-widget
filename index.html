@@ -1305,9 +1305,9 @@
           const parts = v.split(".");
           if (parts.length > 2) v = parts[0] + "." + parts.slice(1).join("");
           if (parts[1] && parts[1].length > 8) v = parts[0] + "." + parts[1].slice(0, 8);
-          if (v.length > 12) return;
+          if (v.length > 12 && v.length >= amount.length) return;
           setAmount(v);
-        }, []);
+        }, [amount]);
 
         // Auto-focus the hidden input when entering buy mode
         useEffect(() => {
